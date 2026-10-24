@@ -45,7 +45,7 @@ for (const [name, items, expected] of [
             const { bot, dashboard } = createActivityBot(t)
             dashboard.dashboard.dailySetPromotions['2026-10-24'] = items
             dashboard.dashboard.morePromotions = items
-            const run = t.mock.method(PromotionActivityRunner.prototype, 'run', async () => {})
+            const run = t.mock.method(PromotionActivityRunner.prototype, 'run', async () => true)
             const didExecute = await new Activities(bot)[method](dashboard)
             assert.equal(didExecute, expected.length > 0)
             assert.equal(run.mock.callCount(), expected.length > 0 ? 1 : 0)
@@ -64,7 +64,7 @@ test('more promotions merge both feeds and execute a duplicated pending offer on
     const { bot, dashboard } = createActivityBot(t)
     dashboard.dashboard.morePromotions = [promotion({ complete: true, offerId: 'done' }), promotion()]
     dashboard.dashboard.morePromotionsWithoutPromotionalItems = [promotion(), promotion({ offerId: 'second' })]
-    const run = t.mock.method(PromotionActivityRunner.prototype, 'run', async () => {})
+    const run = t.mock.method(PromotionActivityRunner.prototype, 'run', async () => true)
     assert.equal(await new Activities(bot).doMorePromotions(dashboard), true)
     assert.deepEqual(
         run.mock.calls[0].arguments[0].map(item => item.offerId),
@@ -75,7 +75,7 @@ test('more promotions merge both feeds and execute a duplicated pending offer on
 test('a completed invocation does not inherit execution from the previous invocation', async t => {
     const { bot, dashboard } = createActivityBot(t)
     const activities = new Activities(bot)
-    const run = t.mock.method(PromotionActivityRunner.prototype, 'run', async () => {})
+    const run = t.mock.method(PromotionActivityRunner.prototype, 'run', async () => true)
     dashboard.dashboard.morePromotions = [promotion()]
     assert.equal(await activities.doMorePromotions(dashboard), true)
     dashboard.dashboard.morePromotions[0].complete = true
@@ -298,7 +298,7 @@ for (const mode of ['browser', 'full-api']) {
         const { bot, dashboard } = createFlowBot(t, mode)
         dashboard.dashboard.morePromotions = [promotion()]
         bot.activities.doMorePromotions = new Activities(bot).doMorePromotions
-        const run = t.mock.method(PromotionActivityRunner.prototype, 'run', async () => {})
+        const run = t.mock.method(PromotionActivityRunner.prototype, 'run', async () => true)
         await bot.Main(account)
         assert.equal(run.mock.callCount(), 1)
         assert.deepEqual(
@@ -317,5 +317,76 @@ for (const mode of ['browser', 'full-api']) {
         assert.ok(!events.includes('doDailyCheckIn'))
         assert.equal(bot.utils.wait.mock.callCount(), 0)
         assert.ok(bot.browser.func.closeBrowser.mock.callCount() > 0)
+    })
+}
+
+for (const mode of ['browser', 'full-api']) {
+    for (const stage of ['doDailySet', 'doMorePromotions']) {
+        test(mode + ': ' + stage + ' skips the interval when all promotions are disabled', async t => {
+            const { bot, dashboard } = createFlowBot(t, mode)
+            bot.config.activities = { urlReward: false, searchOnBing: false }
+            dashboard.dashboard.dailySetPromotions['2026-10-24'] = [promotion()]
+            dashboard.dashboard.morePromotions = [promotion()]
+            bot.activities[stage] = new Activities(bot)[stage]
+            bot.activities.doUrlReward = t.mock.fn(async () => true)
+            await bot.Main(account)
+            assert.equal(bot.activities.doUrlReward.mock.callCount(), 0)
+            assert.equal(bot.browser.func.reportServerAction.mock.callCount(), 0)
+            assert.equal(bot.utils.wait.mock.callCount(), 0)
+        })
+    }
+}
+
+for (const mode of ['browser', 'full-api']) {
+    for (const [name, reportable, actionAvailable, expected] of [
+        ['unreportable offers', false, true, []],
+        ['missing action', true, false, []],
+        ['submitted offers', true, true, [15000, 60000]]
+    ]) {
+        test(mode + ': real promotion submissions retain only applicable intervals for ' + name, async t => {
+            const { bot, dashboard } = createFlowBot(t, mode)
+            bot.config.activities = { urlReward: true, searchOnBing: false }
+            dashboard.dashboard.morePromotions = [promotion(), promotion({ offerId: 'second' })]
+            bot.nextActions.reportActivity = actionAvailable ? 'offline-action' : ''
+            bot.browser.func.ensureOffer = async () => ({ reportable, hash: 'offline-hash', points: 10 })
+            bot.activities.doMorePromotions = new Activities(bot).doMorePromotions
+            bot.activities.doUrlReward = new Activities(bot).doUrlReward
+            await bot.Main(account)
+            assert.equal(bot.browser.func.reportServerAction.mock.callCount(), expected.length ? 2 : 0)
+            assert.deepEqual(
+                bot.utils.wait.mock.calls.map(call => call.arguments[0]),
+                expected
+            )
+        })
+    }
+}
+
+for (const method of ['doDailySet', 'doMorePromotions']) {
+    test(method + ': unsupported promotions are skipped without inter-promotion waits', async t => {
+        const { bot, dashboard } = createActivityBot(t)
+        bot.config.activities = { urlReward: true, searchOnBing: true }
+        const items = [
+            promotion({ promotionType: 'unsupported' }),
+            promotion({ offerId: 'second', promotionType: 'unsupported' })
+        ]
+        dashboard.dashboard.dailySetPromotions['2026-10-24'] = items
+        dashboard.dashboard.morePromotions = items
+        assert.equal(await new Activities(bot)[method](dashboard), false)
+        assert.equal(bot.utils.wait.mock.callCount(), 0)
+        assert.equal(bot.browser.func.reportServerAction.mock.callCount(), 0)
+    })
+}
+
+for (const apiSearchOnBing of [false, true]) {
+    test('SearchOnBing activation reports attempts even when unacknowledged, api=' + apiSearchOnBing, async t => {
+        const { bot } = createActivityBot(t)
+        bot.config.experimental = { apiSearchOnBing }
+        bot.nextActions.reportActivity = 'offline-action'
+        bot.browser.func.ensureOffer = async () => ({ hash: 'offline-hash' })
+        bot.browser.func.reportServerAction.mock.mockImplementation(async () => ({ status: 200, acknowledged: false }))
+        const page = { goto: async () => {} }
+        assert.equal(await new Activities(bot).doSearchOnBing(promotion(), page), true)
+        assert.equal(bot.browser.func.reportServerAction.mock.callCount(), 1)
+        assert.equal(bot.http.request.mock.callCount(), 0)
     })
 }

@@ -49,12 +49,15 @@ export default class Activities {
         return await new BrowserSearch(this.bot).doBonusSearches(page)
     }
 
-    doSearchOnBing = async (promotion: BasePromotion, page: Page): Promise<void> => {
+    doSearchOnBing = async (promotion: BasePromotion, page: Page): Promise<boolean> => {
         if (this.bot.config.experimental.apiSearchOnBing) {
-            await new ApiSearchOnBing(this.bot).doSearchOnBing(promotion)
-            return
+            const activity = new ApiSearchOnBing(this.bot)
+            await activity.doSearchOnBing(promotion)
+            return activity.didExecute()
         }
-        await new BrowserSearchOnBing(this.bot).doSearchOnBing(promotion, page)
+        const activity = new BrowserSearchOnBing(this.bot)
+        await activity.doSearchOnBing(promotion, page)
+        return activity.didExecute()
     }
 
     doDailySet = async (data: DashboardData): Promise<boolean> => {
@@ -79,9 +82,10 @@ export default class Activities {
         await new PunchCards(this.bot).runDesktop()
     }
 
-    doUrlReward = async (promotion: BasePromotion): Promise<void> => {
-        const urlReward = new UrlReward(this.bot)
-        await urlReward.doUrlReward(promotion)
+    doUrlReward = async (promotion: BasePromotion): Promise<boolean> => {
+        const activity = new UrlReward(this.bot)
+        await activity.doUrlReward(promotion)
+        return activity.didExecute()
     }
 
     doClaimBonusPoints = async (): Promise<void> => {

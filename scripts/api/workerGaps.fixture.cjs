@@ -84,7 +84,10 @@ function createActivityBot(t) {
                 getBrowserEarnablePoints: t.mock.fn(async () => ({ mobileSearchPoints: 0, desktopSearchPoints: 0 })),
                 getAppEarnablePoints: t.mock.fn(async () => ({ totalEarnablePoints: 0 }))
             },
-            react: { getStreakProtection: () => ({ isProtectionOn: true, remainingDays: 3 }) }
+            react: {
+                getStreakProtection: () => ({ isProtectionOn: true, remainingDays: 3 }),
+                routerStateTree: () => 'offline-router-state'
+            }
         }
     }
     return { bot, dashboard }
