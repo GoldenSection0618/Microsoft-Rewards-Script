@@ -89,3 +89,75 @@ for (const desktopAvailable of [true, false]) {
         assert.equal(bot.http.request.mock.callCount(), 0)
     })
 }
+
+test('an explicit zero allowance remains a confirmed quota in the search plan', async t => {
+    const { bot, dashboard } = createBot(t)
+    bot.config.workers = { doMobileSearch: true, doDesktopSearch: true }
+    dashboard.dashboard.userStatus.counters = {
+        pcSearch: [{ pointProgress: 0, pointProgressMax: 0 }],
+        mobileSearch: [{ pointProgress: 0, pointProgressMax: 0 }]
+    }
+    const points = await new BrowserFunc(bot).getBrowserEarnablePoints(dashboard)
+    const plan = await new SearchManager(bot).getSearchPoints()
+    const message = bot.logger.info.mock.calls.at(-1).arguments[2]
+    assert.equal(points.desktopSearchPoints, 0)
+    assert.equal(points.mobileSearchPoints, 0)
+    assert.equal(plan.doDesktop, false)
+    assert.equal(plan.doMobile, false)
+    assert.doesNotMatch(message, /quota not provided/)
+    assert.match(message, /complete, 0\/0/)
+})
+
+test('invalid search progress stays unknown in both display and planning', async t => {
+    const { bot, dashboard } = createBot(t)
+    bot.config.workers = { doDesktopSearch: true }
+    dashboard.dashboard.userStatus.counters = {
+        pcSearch: [{ pointProgress: NaN, pointProgressMax: 60 }]
+    }
+    const points = await new BrowserFunc(bot).getBrowserEarnablePoints(dashboard)
+    const plan = await new SearchManager(bot).getSearchPoints()
+    assert.equal(points.desktopSearchPoints, null)
+    assert.equal(plan.doDesktop, false)
+    assert.equal(plan.desktopMissing, 0)
+    assert.match(bot.logger.info.mock.calls.at(-1).arguments[2], /quota not provided/)
+})
+
+test('valid desktop and Edge counters retain their combined remaining allowance', async t => {
+    const { bot, dashboard } = createBot(t)
+    bot.config.workers = { doMobileSearch: true, doDesktopSearch: true }
+    dashboard.dashboard.userStatus.counters = {
+        pcSearch: [
+            { pointProgress: 10, pointProgressMax: 60 },
+            { pointProgress: 0, pointProgressMax: 20, name: 'daily_edge_bonus' }
+        ],
+        mobileSearch: [{ pointProgress: 20, pointProgressMax: 30 }]
+    }
+    const points = await new BrowserFunc(bot).getBrowserEarnablePoints(dashboard)
+    const plan = await new SearchManager(bot).getSearchPoints()
+    assert.equal(points.desktopSearchPoints, 70)
+    assert.equal(points.mobileSearchPoints, 10)
+    assert.equal(plan.desktopMissing, 70)
+    assert.equal(plan.mobileMissing, 10)
+    assert.equal(plan.doDesktop, true)
+    assert.equal(plan.doMobile, true)
+})
+
+for (const [mobile, browser, expected] of [
+    ['未提供', '0', { mobile: null, browser: 0, app: 0 }],
+    ['0', '未提供', { mobile: 0, browser: null, app: 0 }],
+    ['0', '0', { mobile: 0, browser: 0, app: 0 }]
+]) {
+    test('log parser retains known and unknown browser quotas: ' + mobile + '/' + browser, async () => {
+        const { createRunState, parseLogLine, applyLogToRunState, summarizeRunState } = await import('./logParser.js')
+        const state = createRunState()
+        const entry = parseLogLine(
+            '[2026/10/24 13:00:00] [test] [INFO] MAIN [POINTS] 今日可赚取 | 移动端: ' +
+                mobile +
+                ' | 浏览器: ' +
+                browser +
+                ' | App: 0 | test@example.invalid | locale: zh-CN'
+        )
+        applyLogToRunState(state, entry)
+        assert.deepEqual(summarizeRunState(state).accounts[0]?.earnable, expected)
+    })
+}

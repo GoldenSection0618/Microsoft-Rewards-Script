@@ -1,3 +1,4 @@
+import { SearchProgress } from '../functions/activities/search/SearchProgress'
 import { URLs } from '../constants/urls'
 import { BING_APP_USER_AGENT } from '../constants/userAgents'
 import type { BrowserContext, Cookie, Page } from 'patchright'
@@ -177,20 +178,12 @@ export default class BrowserFunc {
         try {
             data ??= await this.getDashboardData()
 
-            const remaining = (
-                counters: { pointProgressMax: number; pointProgress: number }[] | undefined
-            ): number | null => {
-                if (!counters?.length) return null
-                if (
-                    counters.some(
-                        item => !Number.isFinite(item.pointProgressMax) || !Number.isFinite(item.pointProgress)
-                    )
-                )
-                    return null
-                return counters.reduce((sum, item) => sum + Math.max(0, item.pointProgressMax - item.pointProgress), 0)
-            }
-            const desktopSearchPoints = remaining(data.dashboard.userStatus.counters.pcSearch)
-            const mobileSearchPoints = remaining(data.dashboard.userStatus.counters.mobileSearch)
+            const progress = new SearchProgress(this.bot)
+            const counters = data.dashboard.userStatus.counters
+            const desktop = progress.calculateQuota(counters.pcSearch)
+            const mobile = progress.calculateQuota(counters.mobileSearch)
+            const desktopSearchPoints = desktop.known ? desktop.remaining : null
+            const mobileSearchPoints = mobile.known ? mobile.remaining : null
 
             const todayDate = this.bot.utils.getFormattedDate()
             const dailySetPoints =

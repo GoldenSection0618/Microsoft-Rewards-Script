@@ -101,7 +101,8 @@ function ensureAccount(state, email) {
 const RE = {
     runStart: /^启动微软奖励脚本 \| v(\S+) \| 账户数: (\d+) \| 集群数: (\d+)/,
     accountStart: /^开始处理账户: (\S+) \| geoLocale: ([^|]+?)(?: \| locale: (\S+))?(?: \| 缓存区域: (\S+))?\s*$/,
-    earnable: /^今日可赚取 \| 移动端: (\d+) \| 浏览器: (\d+) \| App: (\d+) \| (\S+) \| locale: (\S+)\s*$/,
+    earnable:
+        /^今日可赚取 \| 移动端: (\d+|未提供|未知) \| 浏览器: (\d+|未提供|未知) \| App: (\d+|未提供|未知) \| (\S+) \| locale: (\S+)\s*$/,
     searchSummary: /^搜索汇总 \| 移动端=(-?\d+) \| 桌面端=(-?\d+) \| 额外=(-?\d+) \| 总计=(-?\d+)/,
     streakProtection:
         /^快照完成 \| offers=(\d+) \| 可上报=(\d+) \| streaks=(\d+) \| 连续保护已启用=(true|false|null) \| 连续保护剩余天数=(\d+|null) \| 连续计数=(\d+|null) \| 等级=([^|]+) \| 账户=(\S+@\S+)$/,
@@ -414,7 +415,10 @@ export function applyLogToRunState(state, entry) {
                 const email = m[4]
                 const acc = ensureAccount(state, email)
                 if (acc) {
-                    acc.earnable = { mobile: Number(m[1]), browser: Number(m[2]), app: Number(m[3]) }
+                    const [mobile, browser, app] = m
+                        .slice(1, 4)
+                        .map(value => (/^\d+$/.test(value) ? Number(value) : null))
+                    acc.earnable = { mobile, browser, app }
                     acc.locale ??= m[5]
                 }
                 state.currentEmail = email
