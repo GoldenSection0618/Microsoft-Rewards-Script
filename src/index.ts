@@ -891,7 +891,7 @@ export class MicrosoftRewardsBot {
                     'POINTS',
                     `今日可赚取 | 移动端: ${browserEarnable.mobileSearchPoints} | 浏览器: ${
                         browserEarnable.desktopSearchPoints
-                    } | App: ${appEarnable?.totalEarnablePoints ?? 0} | ${accountEmail} | locale: ${this.accountLocale.locale}`
+                    } | App: ${appEarnable?.totalEarnablePoints ?? '未知'} | ${accountEmail} | locale: ${this.accountLocale.locale}`
                 )
 
                 const parallel = this.config.searchSettings.parallelSearching
@@ -1195,9 +1195,11 @@ async function main(): Promise<void> {
     }
 }
 
-main().catch(async error => {
-    const tmpBot = new MicrosoftRewardsBot()
-    tmpBot.logger.error('main', 'MAIN-ERROR', error as Error)
-    await flushAllWebhooks()
-    process.exit(1)
-})
+if (require.main === module) {
+    main().catch(async error => {
+        const tmpBot = new MicrosoftRewardsBot()
+        tmpBot.logger.error('main', 'MAIN-ERROR', error as Error)
+        await flushAllWebhooks()
+        process.exit(1)
+    })
+}

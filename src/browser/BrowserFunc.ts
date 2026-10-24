@@ -1,3 +1,4 @@
+import { resolveCheckInState } from '../functions/activities/app/CheckInState'
 import { URLs } from '../constants/urls'
 import { BING_APP_USER_AGENT } from '../constants/userAgents'
 import type { BrowserContext, Cookie, Page } from 'patchright'
@@ -147,10 +148,10 @@ export default class BrowserFunc {
         return error instanceof Error ? error.message : String(error)
     }
 
-    async getAppDashboardData(): Promise<AppDashboardData> {
+    async getAppDashboardData(channel = 'SAIOS'): Promise<AppDashboardData> {
         try {
             const request: HttpRequestConfig = {
-                url: URLs.platform.me('SAIOS'),
+                url: URLs.platform.me(channel),
                 method: 'GET',
                 headers: {
                     Authorization: `Bearer ${this.bot.accessToken}`,
@@ -248,7 +249,6 @@ export default class BrowserFunc {
             )
 
             let readToEarn = 0
-            let checkIn = 0
 
             for (const item of eligibleActivities) {
                 const attrs = item.attributes
@@ -257,19 +257,11 @@ export default class BrowserFunc {
                     const pointMax = parseInt(attrs.pointmax ?? '0')
                     const pointProgress = parseInt(attrs.pointprogress ?? '0')
                     readToEarn = Math.max(0, pointMax - pointProgress)
-                } else if (attrs.type === 'checkin') {
-                    const progress = parseInt(attrs.progress ?? '0')
-                    const checkInDay = progress % 7
-                    const lastUpdated = new Date(attrs.last_updated ?? '')
-                    const today = new Date()
-
-                    if (checkInDay < 6 && today.getDate() !== lastUpdated.getDate()) {
-                        checkIn = parseInt(attrs[`day_${checkInDay + 1}_points`] ?? '0')
-                    }
                 }
             }
-
-            const totalEarnablePoints = readToEarn + checkIn
+            const checkInState = resolveCheckInState(userData.response.promotions, this.bot.userData.geoLocale)
+            const checkIn = checkInState.remaining
+            const totalEarnablePoints = checkIn === null ? null : readToEarn + checkIn
 
             return {
                 readToEarn,
