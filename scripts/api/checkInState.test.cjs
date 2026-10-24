@@ -192,3 +192,32 @@ test('a post-request completion record confirms the day without inventing a bala
     assert.equal(bot.userData.gainedPoints, 0)
     assert.ok(bot.logger.info.mock.calls.some(call => /本次无新增积分/.test(call.arguments[2])))
 })
+
+for (const mode of ['browser', 'full-api']) {
+    test(mode + ': unconfirmed check-in preserves later tasks and the failure result', async t => {
+        const { bot } = createActivityBot(t)
+        bot.config.workers = { doDailyCheckIn: true, doReadToEarn: true, doMobileSearch: true }
+        bot.config.experimental.apiSearch = mode === 'full-api'
+        bot.http.request = t.mock.fn(async () => ({ status: 200, data: { code: 0, response: { balance: 100 } } }))
+        bot.activities.doDailyCheckIn = () => new DailyCheckIn(bot).doDailyCheckIn()
+        const later = []
+        bot.activities.doReadToEarn = async () => {
+            later.push('read')
+        }
+        bot.searchManager.getSearchPoints = async () => ({ doMobile: true, doDesktop: false })
+        bot.searchManager.searchMobile = async () => {
+            later.push('search')
+            return 10
+        }
+        bot.browser.func.getCurrentPoints = async () => 110
+        const result = await bot.Main(account)
+        assert.deepEqual(later, ['read', 'search'])
+        assert.match(result.error, /签到未确认到账/)
+        assert.equal(result.initialPoints, 100)
+        assert.equal(result.collectedPoints, 10)
+        assert.deepEqual(
+            bot.utils.wait.mock.calls.map(call => call.arguments),
+            [[60000], [60000]]
+        )
+    })
+}
