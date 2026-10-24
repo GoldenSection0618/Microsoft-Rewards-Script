@@ -68,6 +68,7 @@ export class PunchCards extends BaseActivity {
             'PUNCHCARD',
             `发现 ${pending.length} 个未完成任务 | apiMatched=${pending.filter(parent => apiById.has(parent.offerId)).length}`
         )
+        this.markExecuted()
 
         for (const parent of pending) {
             try {

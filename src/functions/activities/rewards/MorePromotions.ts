@@ -26,6 +26,7 @@ export class MorePromotions extends BaseActivity {
             'MORE-PROMOTIONS',
             `开始解决"更多推广"项目 | remaining=${pending.length}`
         )
+        this.markExecuted()
         await new PromotionActivityRunner(this.bot).run(pending)
         this.bot.logger.info(this.bot.isMobile, 'MORE-PROMOTIONS', '"更多推广"项目处理完毕')
     }

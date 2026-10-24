@@ -14,6 +14,7 @@ export class DailySet extends BaseActivity {
         }
 
         this.bot.logger.info(this.bot.isMobile, 'DAILY-SET', `开始解决"每日任务"项目 | remaining=${pending.length}`)
+        this.markExecuted()
         await new PromotionActivityRunner(this.bot).run(pending)
         this.bot.logger.info(this.bot.isMobile, 'DAILY-SET', '"每日任务"项目处理完毕')
     }

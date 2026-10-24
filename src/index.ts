@@ -922,12 +922,10 @@ export class MicrosoftRewardsBot {
                         await this.activities.doEnsureStreakProtection()
                     }
                     if (this.config.workers.doPunchCards) {
-                        await this.activities.doPunchCardsMobile(data)
-                        await this.gapBetweenWorkers()
+                        if (await this.activities.doPunchCardsMobile(data)) await this.gapBetweenWorkers()
                     }
                     if (this.config.workers.doActivateSearchPerk) {
-                        await this.activities.doActivateSearchPerk(data)
-                        await this.gapBetweenWorkers()
+                        if (await this.activities.doActivateSearchPerk(data)) await this.gapBetweenWorkers()
                     }
 
                     const plan = await this.searchManager.getSearchPoints()
@@ -950,24 +948,19 @@ export class MicrosoftRewardsBot {
                     }
 
                     if (this.config.workers.doDailySet) {
-                        await this.activities.doDailySet(data)
-                        await this.gapBetweenWorkers()
+                        if (await this.activities.doDailySet(data)) await this.gapBetweenWorkers()
                     }
                     if (this.config.workers.doMorePromotions) {
-                        await this.activities.doMorePromotions(data)
-                        await this.gapBetweenWorkers()
+                        if (await this.activities.doMorePromotions(data)) await this.gapBetweenWorkers()
                     }
                     if (appAvailable && this.config.workers.doDailyCheckIn) {
-                        await this.activities.doDailyCheckIn()
-                        await this.gapBetweenWorkers()
+                        if (await this.activities.doDailyCheckIn()) await this.gapBetweenWorkers()
                     }
                     if (appAvailable && this.config.workers.doAppPromotions && appData) {
-                        await this.activities.doAppPromotions(appData)
-                        await this.gapBetweenWorkers()
+                        if (await this.activities.doAppPromotions(appData)) await this.gapBetweenWorkers()
                     }
                     if (appAvailable && this.config.workers.doReadToEarn) {
-                        await this.activities.doReadToEarn()
-                        await this.gapBetweenWorkers()
+                        if (await this.activities.doReadToEarn()) await this.gapBetweenWorkers()
                     }
 
                     if (doMobileSearch) mobilePoints = await this.searchManager.searchMobile(account)
@@ -978,32 +971,25 @@ export class MicrosoftRewardsBot {
                         await this.activities.doEnsureStreakProtection()
                     }
                     if (this.config.workers.doDailySet) {
-                        await this.activities.doDailySet(data)
-                        await this.gapBetweenWorkers()
+                        if (await this.activities.doDailySet(data)) await this.gapBetweenWorkers()
                     }
                     if (this.config.workers.doActivateSearchPerk) {
-                        await this.activities.doActivateSearchPerk(data)
-                        await this.gapBetweenWorkers()
+                        if (await this.activities.doActivateSearchPerk(data)) await this.gapBetweenWorkers()
                     }
                     if (this.config.workers.doMorePromotions) {
-                        await this.activities.doMorePromotions(data)
-                        await this.gapBetweenWorkers()
+                        if (await this.activities.doMorePromotions(data)) await this.gapBetweenWorkers()
                     }
                     if (appAvailable && this.config.workers.doDailyCheckIn) {
-                        await this.activities.doDailyCheckIn()
-                        await this.gapBetweenWorkers()
+                        if (await this.activities.doDailyCheckIn()) await this.gapBetweenWorkers()
                     }
                     if (appAvailable && this.config.workers.doAppPromotions && appData) {
-                        await this.activities.doAppPromotions(appData)
-                        await this.gapBetweenWorkers()
+                        if (await this.activities.doAppPromotions(appData)) await this.gapBetweenWorkers()
                     }
                     if (appAvailable && this.config.workers.doReadToEarn) {
-                        await this.activities.doReadToEarn()
-                        await this.gapBetweenWorkers()
+                        if (await this.activities.doReadToEarn()) await this.gapBetweenWorkers()
                     }
                     if (this.config.workers.doPunchCards) {
-                        await this.activities.doPunchCardsMobile(data)
-                        await this.gapBetweenWorkers()
+                        if (await this.activities.doPunchCardsMobile(data)) await this.gapBetweenWorkers()
                     }
 
                     const plan = await this.searchManager.getSearchPoints()
@@ -1079,7 +1065,7 @@ export class MicrosoftRewardsBot {
                 )
 
                 if (this.config.workers.doClaimBonusPoints) {
-                    await this.gapBetweenWorkers()
+                    if (this.nextActions.reportClaimAllPoints) await this.gapBetweenWorkers()
                     await this.activities.doClaimBonusPoints()
                 }
 
@@ -1195,9 +1181,11 @@ async function main(): Promise<void> {
     }
 }
 
-main().catch(async error => {
-    const tmpBot = new MicrosoftRewardsBot()
-    tmpBot.logger.error('main', 'MAIN-ERROR', error as Error)
-    await flushAllWebhooks()
-    process.exit(1)
-})
+if (require.main === module) {
+    main().catch(async error => {
+        const tmpBot = new MicrosoftRewardsBot()
+        tmpBot.logger.error('main', 'MAIN-ERROR', error as Error)
+        await flushAllWebhooks()
+        process.exit(1)
+    })
+}
