@@ -4,7 +4,6 @@ const test = require('node:test')
 require('../../node_modules/ts-node/register/transpile-only.js')
 const Activities = require('../../src/functions/Activities.ts').default
 const { PromotionActivityRunner } = require('../../src/functions/activities/rewards/PromotionActivityRunner.ts')
-const { PunchCards } = require('../../src/functions/activities/rewards/PunchCards.ts')
 const {
     stages,
     postWaitStages,
@@ -13,6 +12,26 @@ const {
     createActivityBot,
     createFlowBot
 } = require('./workerGaps.fixture.cjs')
+
+function questChild(overrides = {}) {
+    return {
+        offerId: 'pcchild-pending',
+        hash: 'offline-hash',
+        reportable: true,
+        isLocked: false,
+        isDisabled: false,
+        isCompleted: false,
+        ...overrides
+    }
+}
+
+function setQuests(bot, parents, children) {
+    bot.browser.react.snapshotQuestList = () => parents ?? []
+    bot.browser.react.snapshotQuestPage = () => children
+    bot.browser.react.questRouterStateTree = () => 'offline-router-state'
+    if (parents === null) bot.browser.func.getRewardsPageHtml = async () => null
+    bot.activities.doClaimReward = new Activities(bot).doClaimReward
+}
 
 for (const [name, items, expected] of [
     ['empty', [], []],
@@ -81,25 +100,57 @@ for (const [name, attributes, expected] of [
 }
 
 for (const method of ['doPunchCardsMobile', 'doPunchCardsDesktop']) {
-    for (const [name, parents, expected] of [
-        ['unavailable', null, false],
-        ['empty', [], false],
-        ['completed', [promotion({ complete: true })], false],
-        ['zero-point', [promotion({ pointProgressMax: 0 })], false],
-        ['pending', [promotion()], true]
+    for (const [name, parents, children, reports, autoClaim, actionAvailable] of [
+        ['unavailable', null, [], 0],
+        ['empty', [], [], 0],
+        ['completed', [promotion({ complete: true })], [questChild()], 0],
+        ['zero-point', [promotion({ pointProgressMax: 0 })], [questChild()], 0],
+        ['no children', [promotion()], [], 0],
+        ['locked', [promotion()], [questChild({ reportable: false, isLocked: true })], 0],
+        ['disabled', [promotion()], [questChild({ reportable: false, isDisabled: true })], 0],
+        ['child completed', [promotion()], [questChild({ reportable: false, isCompleted: true })], 0],
+        ['missing hash', [promotion()], [questChild({ reportable: false, hash: null })], 0],
+        ['search quota', [promotion()], [questChild({ offerId: 'pcchild-search-day' })], 0],
+        ['manual claim', [promotion()], [questChild({ offerId: 'pcchild-claim' })], 0, false],
+        ['missing action', [promotion()], [questChild()], 0, false, false],
+        ['claim missing action', [promotion()], [questChild({ offerId: 'pcchild-claim' })], 0, true, false],
+        ['pending', [promotion()], [questChild()], 1],
+        ['automatic claim', [promotion()], [questChild({ offerId: 'pcchild-claim' })], 1, true],
+        ['mixed', [promotion()], [questChild({ reportable: false }), questChild()], 1]
     ]) {
         test(`${method}: ${name} quests execute only when actionable`, async t => {
             const { bot, dashboard } = createActivityBot(t)
-            t.mock.method(PunchCards.prototype, 'getParentQuests', async () => parents)
-            const solve = t.mock.method(PunchCards.prototype, 'solvePunchCard', async () => {})
+            setQuests(bot, parents, children)
+            bot.nextActions.reportActivity = actionAvailable === false ? '' : 'offline-action'
+            bot.config.autoClaimPunchcardRewards = Boolean(autoClaim)
             assert.equal(
                 await new Activities(bot)[method](dashboard),
-                method === 'doPunchCardsMobile' ? expected : undefined
+                method === 'doPunchCardsMobile' ? reports > 0 : undefined
             )
-            assert.equal(solve.mock.callCount(), expected ? 1 : 0)
+            assert.equal(bot.browser.func.reportServerAction.mock.callCount(), reports)
+            assert.deepEqual(
+                bot.utils.wait.mock.calls.map(call => call.arguments),
+                reports ? [[5000]] : []
+            )
+            assert.equal(bot.http.request.mock.callCount(), 0)
         })
     }
 }
+
+test('an attempted punchcard request still counts as work when its response fails', async t => {
+    const { bot, dashboard } = createActivityBot(t)
+    setQuests(bot, [promotion()], [questChild()])
+    bot.nextActions.reportActivity = 'offline-action'
+    bot.browser.func.reportServerAction.mock.mockImplementation(async () => {
+        throw new Error('ConnectionReset (10054)')
+    })
+    assert.equal(await new Activities(bot).doPunchCardsMobile(dashboard), true)
+    assert.equal(bot.browser.func.reportServerAction.mock.callCount(), 1)
+    assert.deepEqual(
+        bot.utils.wait.mock.calls.map(call => call.arguments),
+        [[5000]]
+    )
+})
 
 for (const method of ['doDailyCheckIn', 'doReadToEarn']) {
     for (const available of [false, true]) {
@@ -147,6 +198,30 @@ for (const reportable of [false, true]) {
 }
 
 for (const mode of ['browser', 'full-api']) {
+    for (const [name, children, reports, autoClaim, actionAvailable] of [
+        ['all children skipped', [questChild({ reportable: false }), questChild({ reportable: false })], 0],
+        ['mixed children', [questChild({ reportable: false }), questChild()], 1],
+        ['manual claim', [questChild({ offerId: 'pcchild-claim' })], 0, false],
+        ['automatic claim', [questChild({ offerId: 'pcchild-claim' })], 1, true],
+        ['missing action', [questChild()], 0, false, false]
+    ]) {
+        test(`${mode}: real punchcards with ${name} preserve only intervals for submitted work`, async t => {
+            const { bot, events } = createFlowBot(t, mode)
+            setQuests(bot, [promotion()], children)
+            bot.nextActions.reportActivity = actionAvailable === false ? '' : 'offline-action'
+            bot.config.autoClaimPunchcardRewards = Boolean(autoClaim)
+            bot.activities.doPunchCardsMobile = new Activities(bot).doPunchCardsMobile
+            await bot.Main(account)
+            assert.equal(bot.browser.func.reportServerAction.mock.callCount(), reports)
+            assert.deepEqual(
+                bot.utils.wait.mock.calls.map(call => call.arguments),
+                reports ? [[5000], [60000]] : []
+            )
+            if (reports) assert.ok(events.findIndex(event => Array.isArray(event) && event[1] === 60000) >= 0)
+            assert.equal(bot.http.request.mock.callCount(), 0)
+        })
+    }
+
     test(`${mode}: ten skipped stages produce no worker waits`, async t => {
         const { bot, events } = createFlowBot(t, mode)
         await bot.Main(account)

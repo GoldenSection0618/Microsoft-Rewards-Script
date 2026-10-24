@@ -94,9 +94,10 @@ export default class Activities {
         await ensureStreakProtection.ensureStreakProtection()
     }
 
-    doClaimReward = async (child: QuestChild, parentId: string): Promise<void> => {
+    doClaimReward = async (child: QuestChild, parentId: string): Promise<boolean> => {
         const claimReward = new ClaimReward(this.bot)
         await claimReward.claimReward(child, parentId)
+        return claimReward.didExecute()
     }
 
     doActivateSearchPerk = async (data: DashboardData): Promise<boolean> => {
