@@ -51,6 +51,7 @@ export class SearchManager {
 
     private describeQuota(enabled: boolean, quota: SearchQuota): string {
         if (!enabled) return `skip (disabled, ${quota.earned}/${quota.max})`
+        if (quota.max <= 0) return 'skip (quota not provided)'
         if (quota.remaining <= 0) return `skip (complete, ${quota.earned}/${quota.max})`
         return `run (${quota.earned}/${quota.max}, missing ${quota.remaining})`
     }

@@ -177,19 +177,20 @@ export default class BrowserFunc {
         try {
             data ??= await this.getDashboardData()
 
-            const desktopSearchPoints =
-                data.dashboard.userStatus.counters.pcSearch?.reduce(
-                    (sum: number, x: { pointProgressMax: number; pointProgress: number }) =>
-                        sum + (x.pointProgressMax - x.pointProgress),
-                    0
-                ) ?? 0
-
-            const mobileSearchPoints =
-                data.dashboard.userStatus.counters.mobileSearch?.reduce(
-                    (sum: number, x: { pointProgressMax: number; pointProgress: number }) =>
-                        sum + (x.pointProgressMax - x.pointProgress),
-                    0
-                ) ?? 0
+            const remaining = (
+                counters: { pointProgressMax: number; pointProgress: number }[] | undefined
+            ): number | null => {
+                if (!counters?.length) return null
+                if (
+                    counters.some(
+                        item => !Number.isFinite(item.pointProgressMax) || !Number.isFinite(item.pointProgress)
+                    )
+                )
+                    return null
+                return counters.reduce((sum, item) => sum + Math.max(0, item.pointProgressMax - item.pointProgress), 0)
+            }
+            const desktopSearchPoints = remaining(data.dashboard.userStatus.counters.pcSearch)
+            const mobileSearchPoints = remaining(data.dashboard.userStatus.counters.mobileSearch)
 
             const todayDate = this.bot.utils.getFormattedDate()
             const dailySetPoints =
@@ -207,7 +208,10 @@ export default class BrowserFunc {
                     return sum
                 }, 0) ?? 0
 
-            const totalEarnablePoints = desktopSearchPoints + mobileSearchPoints + dailySetPoints + morePromotionsPoints
+            const totalEarnablePoints =
+                desktopSearchPoints === null || mobileSearchPoints === null
+                    ? null
+                    : desktopSearchPoints + mobileSearchPoints + dailySetPoints + morePromotionsPoints
 
             return {
                 dailySetPoints,
